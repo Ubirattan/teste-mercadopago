@@ -1,0 +1,4 @@
+# Site de teste do Mercado Pago: página estática + uma função no servidor (sem build).
+[build]
+  publish = "."
+  functions = "netlify/functions"

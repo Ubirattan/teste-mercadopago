@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teste do Mercado Pago</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#e2e8f0;padding:12px}
+.box{max-width:520px;margin:10px auto;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:20px;margin:6px auto;max-width:520px}
+.dica{margin:0;font-size:13px;color:#94a3b8;line-height:1.45}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
+input{height:44px;border-radius:12px;border:1px solid #475569;background:#0f172a;color:#fff;font-size:17px;padding:0 12px}
+.bts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{cursor:pointer}
+.bts button,.entrar{border:none;border-radius:14px;color:#fff;font-weight:700;font-size:15px;padding:12px 8px;display:flex;flex-direction:column;gap:2px;align-items:center}
+.bts small{font-weight:400;font-size:11px;opacity:.9}
+.b1,.entrar{background:linear-gradient(180deg,#32bcad,#0f766e)}.b2{background:linear-gradient(180deg,#38bdf8,#0369a1)}
+button:disabled{opacity:.5}
+.erro{background:#7f1d1d;color:#fecaca;border-radius:10px;padding:8px 10px;font-size:13px}
+.st{align-self:center;border:2px solid;border-radius:20px;padding:6px 16px;font-weight:700;font-size:17px}
+.cli{margin:0;font-size:13px;color:#fde68a;font-weight:600}
+.cliente{background:#fff;color:#111;border-radius:14px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.cliente b{font-size:17px}.cliente small{font-size:12px;color:#555}
+.cliente img{width:220px;height:220px}
+.cc{font:11px monospace;word-break:break-all;background:#f1f5f9;border-radius:8px;padding:8px;max-height:70px;overflow:auto;width:100%}
+.cliente button{border:none;border-radius:10px;background:#32bcad;color:#fff;font-weight:700;font-size:15px;padding:10px 18px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{padding:6px 4px;border-bottom:1px solid #334155}td:last-child{text-align:right;font-weight:600}
+tr.dest td{color:#4ade80}
+.reemb{border:1px solid #93c5fd;background:#1e3a8a;color:#fff;border-radius:12px;padding:10px;font-weight:600;font-size:14px}
+.oculto{display:none!important}
+</style>
+</head>
+<body>
+<h1>🧪 Teste do Mercado Pago</h1>
+
+<div class="box" id="login">
+  <label>Senha da página<input id="senha" type="password" autocomplete="current-password"></label>
+  <button class="entrar" onclick="entrar()">Entrar</button>
+  <div class="erro oculto" id="erroLogin"></div>
+</div>
+
+<div class="oculto" id="app">
+  <div class="box">
+    <p class="dica">Cobrança <b>de verdade</b> na sua conta do Mercado Pago. Pague com <b>outro banco</b> (Nubank, Inter, Caixa…): o Mercado Pago não deixa pagar a si mesmo. Depois dá pra devolver o dinheiro no botão de reembolso.</p>
+    <label>Valor (R$)<input id="valor" inputmode="decimal" value="1,00"></label>
+    <label>E-mail de quem vai pagar (pro Pix)<input id="email" type="email" placeholder="email@exemplo.com"></label>
+    <div class="bts">
+      <button class="b1" id="bPix" onclick="pix()">Pix aqui no site<small>QR Code e copia e cola</small></button>
+      <button class="b2" id="bPro" onclick="pro()">Página do Mercado Pago<small>Pix, cartão e saldo</small></button>
+    </div>
+    <div class="erro oculto" id="erro"></div>
+  </div>
+  <div class="box oculto" id="res"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const brl = n => n == null ? '–' : 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dh = t => t ? new Date(t).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '–';
+function dur(ms) {
+  if (ms == null || ms < 0 || isNaN(ms)) return '–';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + ' segundos';
+  if (s < 3600) return Math.floor(s / 60) + ' min ' + (s % 60) + ' s';
+  const h = s / 3600; return h < 48 ? h.toFixed(1).replace('.', ',') + ' horas' : Math.round(h / 24) + ' dias';
+}
+const STATUS = { pending: ['⏳ Aguardando pagamento', '#fbbf24'], in_process: ['⏳ Em análise', '#fbbf24'], approved: ['✅ Pago!', '#4ade80'],
+  rejected: ['❌ Recusado', '#f87171'], cancelled: ['🚫 Cancelado / expirou', '#94a3b8'], refunded: ['↩️ Devolvido (reembolso)', '#93c5fd'] };
+let senha = '', P = null, timer = null, relogio = null;
+
+async function chama(b, quieto) {
+  if (!quieto) $('erro').classList.add('oculto');
+  const r = await fetch('/.netlify/functions/mp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...b, senha }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { if (!quieto) { $('erro').textContent = j.error || 'Erro'; $('erro').classList.remove('oculto'); } throw new Error(j.error || 'Erro'); }
+  return j;
+}
+async function entrar() {
+  senha = $('senha').value;
+  try {
+    await chama({ op: 'entrar' }, true);
+    try { sessionStorage.setItem('mp_senha', senha); } catch {}
+    $('login').classList.add('oculto'); $('app').classList.remove('oculto');
+    const id = new URLSearchParams(location.search).get('payment_id');      // volta da página do Mercado Pago
+    if (id && /^\d+$/.test(id)) status(id);
+  } catch (e) { $('erroLogin').textContent = e.message; $('erroLogin').classList.remove('oculto'); }
+}
+const valor = () => Number(($('valor').value || '').replace(/\./g, '').replace(',', '.'));
+async function pix() {
+  try { localStorage.setItem('mp_email', $('email').value.trim()); } catch {}
+  botoes(true);
+  try { mostra(await chama({ op: 'pix', valor: valor(), email: $('email').value.trim() })); } catch {}
+  botoes(false);
+}
+async function pro() {
+  botoes(true);
+  try { const r = await chama({ op: 'pro', valor: valor() }); location.href = r.url; } catch { botoes(false); }
+}
+async function status(id, quieto) { try { mostra(await chama({ op: 'status', id }, quieto)); } catch {} }
+async function reembolsar() {
+  if (!confirm('Devolver esse pagamento pra quem pagou?')) return;
+  try { mostra(await chama({ op: 'reembolsar', id: P.id })); } catch {}
+}
+function botoes(d) { $('bPix').disabled = d; $('bPro').disabled = d; }
+function mostra(p) {
+  if (P && P.id === p.id && !p.pix && P.pix) p.pix = P.pix;     // guarda o QR da primeira resposta
+  P = p;
+  clearInterval(timer); clearInterval(relogio);
+  if (['pending', 'in_process'].includes(p.status)) { timer = setInterval(() => status(p.id, true), 3000); relogio = setInterval(desenha, 1000); }
+  desenha();
+}
+function desenha() {
+  const p = P; if (!p) return;
+  const st = p.reembolsado ? STATUS.refunded : STATUS[p.status] || [p.status, '#fff'];
+  const espera = p.status !== 'approved' ? Date.now() - Date.parse(p.criado) : null;
+  const aprov = p.aprovado ? Date.parse(p.aprovado) - Date.parse(p.criado) : null;
+  const lib = p.liberacao && p.aprovado ? Date.parse(p.liberacao) - Date.parse(p.aprovado) : null;
+  const meio = p.meio === 'pix' ? 'Pix' : p.tipo === 'credit_card' ? 'Cartão de crédito (' + p.meio + ')' : p.tipo === 'account_money' ? 'Saldo Mercado Pago' : (p.meio || '–');
+  let h = `<div class="st" style="color:${st[1]};border-color:${st[1]}">${st[0]}</div>`;
+  if (p.status !== 'approved' && p.pix) {
+    h += `<p class="cli">👇 Assim o cliente vê:</p><div class="cliente"><b>Pague ${brl(p.valor)} com Pix</b>
+      ${p.pix.img ? `<img src="data:image/png;base64,${p.pix.img}" alt="QR Code Pix">` : ''}
+      <small>Ou copie o código e cole no app do seu banco (Pix copia e cola):</small>
+      <div class="cc">${p.pix.qr}</div>
+      <button onclick="copiar(this)">Copiar código Pix</button>
+      <small>Expira às ${dh(p.expira)} · esperando há ${dur(espera)}</small></div>`;
+  }
+  h += `<table><tbody>
+    <tr><td>Pagamento nº</td><td>${p.id}</td></tr>
+    <tr><td>Meio</td><td>${meio}</td></tr>
+    <tr><td>Criado</td><td>${dh(p.criado)}</td></tr>
+    <tr><td>Aprovado</td><td>${dh(p.aprovado)}</td></tr>
+    ${aprov != null ? `<tr class="dest"><td>Tempo até aprovar</td><td>${dur(aprov)}</td></tr>` : ''}
+    <tr><td>Valor pago</td><td>${brl(p.valor)}</td></tr>
+    <tr><td>Taxa do Mercado Pago</td><td>${p.status === 'approved' ? brl(p.taxas) : '–'}</td></tr>
+    <tr class="dest"><td>Você recebe</td><td>${p.status === 'approved' ? brl(p.liquido) : '–'}</td></tr>
+    <tr class="dest"><td>Dinheiro disponível na conta</td><td>${p.liberacao ? dh(p.liberacao) + (lib != null ? (lib < 60000 ? ' (na hora)' : ' (em ' + dur(lib) + ')') : '') : '–'}</td></tr>
+    ${p.liberado ? `<tr><td>Situação da liberação</td><td>${p.liberado === 'released' ? 'Liberado ✅' : p.liberado === 'pending' ? 'Aguardando a data' : p.liberado}</td></tr>` : ''}
+  </tbody></table>`;
+  if (p.status === 'approved' && !p.reembolsado) h += `<button class="reemb" onclick="reembolsar()">↩️ Devolver o dinheiro (reembolso)</button>`;
+  $('res').innerHTML = h; $('res').classList.remove('oculto');
+}
+function copiar(b) { navigator.clipboard && navigator.clipboard.writeText(P.pix.qr); b.textContent = 'Copiado ✓'; setTimeout(() => b.textContent = 'Copiar código Pix', 2000); }
+try { $('email').value = localStorage.getItem('mp_email') || ''; const s = sessionStorage.getItem('mp_senha'); if (s) { $('senha').value = s; entrar(); } } catch {}
+$('senha').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
+</script>
+</body>
+</html>
